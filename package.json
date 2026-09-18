@@ -1,6 +1,6 @@
 {
-  "name": "my-app",
-  "version": "0.1.0",
+  "name": "stock-tracker-frontend",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000 --hostname 0.0.0.0",
