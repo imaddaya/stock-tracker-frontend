@@ -1,21 +1,26 @@
-
 import { useState } from "react";
 
 interface ApiKeySectionProps {
   apiKey: string;
   loading: boolean;
-  onUpdate: (newKey: string) => void;
+  onUpdate: (newKey: string) => Promise<void>;
 }
 
-export default function ApiKeySection({ apiKey, loading, onUpdate }: ApiKeySectionProps) {
-  const [showApiKey, setShowApiKey] = useState(false);
+export default function ApiKeySection({
+  apiKey,
+  loading,
+  onUpdate,
+}: ApiKeySectionProps) {
   const [isEditingApiKey, setIsEditingApiKey] = useState(false);
   const [newApiKey, setNewApiKey] = useState("");
   const [showApiWarning, setShowApiWarning] = useState(false);
 
   const handleStartEdit = () => {
     setIsEditingApiKey(true);
-    setNewApiKey(apiKey);
+
+    // Never pre-fill the input with the masked key.
+    // The user must enter the complete replacement key.
+    setNewApiKey("");
   };
 
   const handleCancelEdit = () => {
@@ -23,25 +28,55 @@ export default function ApiKeySection({ apiKey, loading, onUpdate }: ApiKeySecti
     setNewApiKey("");
   };
 
-  const handleUpdate = () => {
-    onUpdate(newApiKey);
+  const handleUpdate = async () => {
+    const trimmedApiKey = newApiKey.trim();
+
+    if (!trimmedApiKey) {
+      return;
+    }
+
+    await onUpdate(trimmedApiKey);
+
     setIsEditingApiKey(false);
     setNewApiKey("");
   };
 
   return (
-    <div style={{ marginBottom: "2rem", padding: "1rem", border: "1px solid #ddd", borderRadius: "8px" }}>
-      <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
+    <div
+      style={{
+        marginBottom: "2rem",
+        padding: "1rem",
+        border: "1px solid #ddd",
+        borderRadius: "8px",
+      }}
+    >
+      <label
+        style={{
+          fontWeight: "bold",
+          display: "block",
+          marginBottom: "0.5rem",
+        }}
+      >
         Alpha Vantage API Key:
       </label>
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          alignItems: "center",
+          marginBottom: "0.5rem",
+        }}
+      >
         {isEditingApiKey ? (
           <>
             <input
-              type="text"
+              type="password"
               value={newApiKey}
               onChange={(e) => setNewApiKey(e.target.value)}
-              placeholder="Enter new API key"
+              placeholder="Enter your new API key"
+              autoComplete="off"
+              disabled={loading}
               style={{
                 flex: 1,
                 padding: "0.5rem",
@@ -50,7 +85,9 @@ export default function ApiKeySection({ apiKey, loading, onUpdate }: ApiKeySecti
                 fontSize: "1rem",
               }}
             />
+
             <button
+              type="button"
               onClick={handleUpdate}
               disabled={loading || !newApiKey.trim()}
               style={{
@@ -59,65 +96,73 @@ export default function ApiKeySection({ apiKey, loading, onUpdate }: ApiKeySecti
                 color: "white",
                 border: "none",
                 borderRadius: "4px",
-                cursor: loading ? "not-allowed" : "pointer",
+                cursor:
+                  loading || !newApiKey.trim() ? "not-allowed" : "pointer",
               }}
             >
-              Update
+              {loading ? "Updating..." : "Update"}
             </button>
+
             <button
+              type="button"
               onClick={handleCancelEdit}
+              disabled={loading}
               style={{
                 padding: "0.5rem 1rem",
                 backgroundColor: "#6c757d",
                 color: "white",
                 border: "none",
                 borderRadius: "4px",
-                cursor: "pointer",
+                cursor: loading ? "not-allowed" : "pointer",
               }}
             >
               Cancel
             </button>
           </>
         ) : (
-          <>
-            <span style={{ flex: 1, fontFamily: "monospace", fontSize: "0.9rem" }}>
-              {showApiKey ? apiKey : "••••••••••••••••"}
-            </span>
-            <button
-              onClick={() => setShowApiKey(!showApiKey)}
-              style={{
-                padding: "0.3rem 0.8rem",
-                backgroundColor: "#17a2b8",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "0.8rem",
-              }}
-            >
-              {showApiKey ? "Hide" : "Show"}
-            </button>
-          </>
+          <span
+            style={{
+              flex: 1,
+              fontFamily: "monospace",
+              fontSize: "0.9rem",
+              color: "#555",
+            }}
+          >
+            {apiKey || "No API key configured"}
+          </span>
         )}
       </div>
+
       {!isEditingApiKey && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+          }}
+        >
           <button
+            type="button"
             onClick={handleStartEdit}
+            disabled={loading}
             style={{
               padding: "0.5rem 1rem",
               backgroundColor: "#ffc107",
               color: "black",
               border: "none",
               borderRadius: "4px",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               fontSize: "0.9rem",
             }}
           >
-            Upgrade API Key
+            Update API Key
           </button>
+
           <div
-            style={{ position: "relative", display: "inline-block" }}
+            style={{
+              position: "relative",
+              display: "inline-block",
+            }}
             onMouseEnter={() => setShowApiWarning(true)}
             onMouseLeave={() => setShowApiWarning(false)}
           >
@@ -130,6 +175,7 @@ export default function ApiKeySection({ apiKey, loading, onUpdate }: ApiKeySecti
             >
               ⚠️
             </span>
+
             {showApiWarning && (
               <div
                 style={{
@@ -149,11 +195,21 @@ export default function ApiKeySection({ apiKey, loading, onUpdate }: ApiKeySecti
                   lineHeight: "1.4",
                 }}
               >
-                <div style={{ color: "#ff6b6b", fontWeight: "bold", marginBottom: "0.3rem" }}>⚠️ WARNING</div>
-                <div style={{ color: "#ff6b6b" }}>
-                  Creating multiple API keys from the same location will cause an IP ban. Change API only when
-                  upgrading the key. This can be done once/week.
+                <div
+                  style={{
+                    fontWeight: "bold",
+                    marginBottom: "0.3rem",
+                  }}
+                >
+                  API Key Security
                 </div>
+
+                <div>
+                  Your current API key is masked for security. Enter the
+                  complete new key when updating it. API key updates are limited
+                  to once per week.
+                </div>
+
                 <div
                   style={{
                     position: "absolute",

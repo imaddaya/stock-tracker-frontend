@@ -15,7 +15,9 @@ export default function ProfilePage() {
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPasswordResetMessage, setShowPasswordResetMessage] = useState(false);
+  const [showPasswordResetMessage, setShowPasswordResetMessage] =
+    useState(false);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -34,7 +36,8 @@ export default function ProfilePage() {
   const fetchProfileData = async () => {
     try {
       const data = await profileAPI.fetchProfile();
-      setApiKey(data.alpha_vantage_api_key || "");
+
+      setApiKey(data.alpha_vantage_api_key_masked || "");
       setEmailReminderTime(data.email_reminder_time || "");
       setEmailReminderEnabled(data.email_reminder_enabled || false);
       setSelectedTimezone(data.timezone || "UTC");
@@ -46,35 +49,48 @@ export default function ProfilePage() {
 
   const handleSetEmailReminder = async () => {
     setLoading(true);
+
     try {
       await profileAPI.updateEmailReminder({
         reminder_time: emailReminderEnabled ? emailReminderTime : null,
         enabled: emailReminderEnabled,
         timezone: selectedTimezone,
       });
+
       setStatus(
         emailReminderEnabled
           ? `Daily email reminder enabled for ${selectedTimezone}!`
-          : "Email reminder disabled!"
+          : "Email reminder disabled!",
       );
     } catch (err) {
+      console.error("Error updating email reminder:", err);
       setStatus("Error updating email reminder");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleUpdateApiKey = async (newApiKey: string) => {
-    if (!newApiKey.trim()) return;
+    if (!newApiKey.trim()) {
+      return;
+    }
 
     setLoading(true);
+
     try {
-      await profileAPI.updateApiKey(newApiKey);
-      setApiKey(newApiKey);
+      await profileAPI.updateApiKey(newApiKey.trim());
+
+      // Refresh the profile so the UI only stores/displays
+      // the masked API key returned by the backend.
+      await fetchProfileData();
+
       setStatus("API key updated successfully!");
     } catch (err) {
+      console.error("Error updating API key:", err);
       setStatus("Error updating API key");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleChangePassword = async () => {
@@ -85,28 +101,47 @@ export default function ProfilePage() {
 
     setLoading(true);
     setShowPasswordResetMessage(true);
+
     try {
       await profileAPI.requestPasswordReset(userEmail);
       setStatus("Password reset email sent!");
-    } catch (error) {
+    } catch (err) {
+      console.error("Password reset request failed:", err);
+
+      // Keep the response generic so account existence
+      // is not exposed through the UI.
       setStatus("Password reset email sent!");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleDeleteAccount = async () => {
     setLoading(true);
+
     try {
       await profileAPI.deleteAccount();
-      setStatus("Account deletion email sent. Check your email and confirm within 30 minutes.");
+
+      setStatus(
+        "Account deletion email sent. Check your email and confirm within 30 minutes.",
+      );
     } catch (err) {
+      console.error("Error initiating account deletion:", err);
       setStatus("Error initiating account deletion");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div style={{ fontFamily: "'Poppins', sans-serif", padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
+    <div
+      style={{
+        fontFamily: "'Poppins', sans-serif",
+        padding: "2rem",
+        maxWidth: "600px",
+        margin: "0 auto",
+      }}
+    >
       <div style={{ marginBottom: "2rem" }}>
         <a
           href="#"
@@ -125,14 +160,43 @@ export default function ProfilePage() {
         </a>
       </div>
 
-      <h1 style={{ marginBottom: "2rem", textAlign: "center" }}>Profile Settings</h1>
+      <h1
+        style={{
+          marginBottom: "2rem",
+          textAlign: "center",
+        }}
+      >
+        Profile Settings
+      </h1>
 
       <StatusMessage message={status} />
 
-      {/* User Email */}
-      <div style={{ marginBottom: "2rem", padding: "1rem", border: "1px solid #ddd", borderRadius: "8px" }}>
-        <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>User Email:</label>
-        <span style={{ color: "#666", fontSize: "1rem" }}>{userEmail}</span>
+      <div
+        style={{
+          marginBottom: "2rem",
+          padding: "1rem",
+          border: "1px solid #ddd",
+          borderRadius: "8px",
+        }}
+      >
+        <label
+          style={{
+            fontWeight: "bold",
+            display: "block",
+            marginBottom: "0.5rem",
+          }}
+        >
+          User Email:
+        </label>
+
+        <span
+          style={{
+            color: "#666",
+            fontSize: "1rem",
+          }}
+        >
+          {userEmail}
+        </span>
       </div>
 
       <EmailReminderSection
@@ -146,7 +210,11 @@ export default function ProfilePage() {
         onSave={handleSetEmailReminder}
       />
 
-      <ApiKeySection apiKey={apiKey} loading={loading} onUpdate={handleUpdateApiKey} />
+      <ApiKeySection
+        apiKey={apiKey}
+        loading={loading}
+        onUpdate={handleUpdateApiKey}
+      />
 
       <PasswordSection
         loading={loading}
@@ -154,7 +222,10 @@ export default function ProfilePage() {
         showPasswordResetMessage={showPasswordResetMessage}
       />
 
-      <DeleteAccountSection loading={loading} onDeleteAccount={handleDeleteAccount} />
+      <DeleteAccountSection
+        loading={loading}
+        onDeleteAccount={handleDeleteAccount}
+      />
     </div>
   );
 }
