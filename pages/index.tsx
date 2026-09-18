@@ -1,65 +1,93 @@
-// pages/login_page.tsx
 import { useState } from "react";
 import { useRouter } from "next/router";
-import Link from 'next/link';
+import Link from "next/link";
+
+import { apiRequest } from "../utils/api";
 
 export default function LoginPage() {
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const isFormValid = email.trim() !== "" && password.trim() !== "";
 
   const handleLogin = async () => {
+    if (!isFormValid || loading) {
+      return;
+    }
+
+    setLoading(true);
+    setStatus("");
+
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/login`,
-         {
+      const data = await apiRequest("/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setStatus(data.detail || "Login failed");
-        return;
+      if (!data?.access_token) {
+        throw new Error("The server did not return an access token.");
       }
 
-      // Once token logic is implemented, store it
-      localStorage.setItem("access_token", data.access_token || "mock_token");
-      localStorage.setItem("user_email", email);
-      router.push("/loggedin");
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("user_email", email.trim());
+
+      await router.push("/loggedin");
     } catch (error) {
       console.error("Login error:", error);
-      setStatus("Something went wrong. Please try again.");
+
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please try again.",
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email.trim()) {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
       setStatus("Please enter your email first.");
       return;
     }
 
+    if (loading) {
+      return;
+    }
+
+    setLoading(true);
+    setStatus("");
+
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/forgot-password`, {
+      await apiRequest("/auth/forgot-password", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email: trimmedEmail,
+        }),
       });
 
-      const data = await response.json();
-      setStatus(data.message || "Check your email for password reset instructions.");
+      setStatus(
+        "If the account is eligible, password reset instructions have been sent.",
+      );
     } catch (error) {
       console.error("Forgot password error:", error);
-      setStatus("Something went wrong.");
+
+      // Keep the response generic so the UI does not
+      // reveal whether an account exists.
+      setStatus(
+        "If the account is eligible, password reset instructions have been sent.",
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,7 +95,7 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: "100vh",
-        backgroundImage: `url(stocksphoto.jpg)`,
+        backgroundImage: "url(stocksphoto.jpg)",
         backgroundSize: "cover",
         backgroundPosition: "center",
         display: "flex",
@@ -102,10 +130,12 @@ export default function LoginPage() {
         }}
       >
         <h2 style={{ marginBottom: "1.5rem" }}>LOGIN</h2>
+
         <input
           type="email"
           placeholder="Email"
           value={email}
+          disabled={loading}
           onChange={(e) => setEmail(e.target.value)}
           style={{
             width: "100%",
@@ -116,11 +146,18 @@ export default function LoginPage() {
             fontSize: "1rem",
           }}
         />
+
         <input
           type="password"
           placeholder="Password"
           value={password}
+          disabled={loading}
           onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && isFormValid && !loading) {
+              void handleLogin();
+            }
+          }}
           style={{
             width: "100%",
             padding: "0.8rem",
@@ -131,45 +168,74 @@ export default function LoginPage() {
           }}
         />
 
-        <div style={{ textAlign: "right", marginBottom: "1.5rem" }}>
-          <span
+        <div
+          style={{
+            textAlign: "right",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <button
+            type="button"
             onClick={handleForgotPassword}
-            style={{ fontSize: "0.9rem", color: "#0070f3", textDecoration: "underline", cursor: "pointer" }}
+            disabled={loading}
+            style={{
+              padding: 0,
+              border: "none",
+              background: "none",
+              fontSize: "0.9rem",
+              color: "#0070f3",
+              textDecoration: "underline",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
           >
             Forgot password?
-          </span>
+          </button>
         </div>
 
         <button
-          disabled={!isFormValid}
+          type="button"
+          disabled={!isFormValid || loading}
           onClick={handleLogin}
           style={{
             width: "100%",
             padding: "0.9rem",
-            backgroundColor: isFormValid ? "#89CFF0" : "#aaccee",
+            backgroundColor: isFormValid && !loading ? "#89CFF0" : "#aaccee",
             border: "none",
             borderRadius: "10px",
             color: "white",
             fontWeight: "bold",
             fontSize: "1.1rem",
-            cursor: isFormValid ? "pointer" : "not-allowed",
+            cursor: isFormValid && !loading ? "pointer" : "not-allowed",
             marginBottom: "1.5rem",
           }}
         >
-          Login
+          {loading ? "Please wait..." : "Login"}
         </button>
 
         <div>
           Don&apos;t have an account?{" "}
           <Link
             href="/signup"
-            style={{ color: "#0070f3", textDecoration: "underline", cursor: "pointer" }}
+            style={{
+              color: "#0070f3",
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
           >
             Signup here
           </Link>
         </div>
 
-        {status && <p style={{ color: "red", marginTop: "1rem" }}>{status}</p>}
+        {status && (
+          <p
+            style={{
+              color: "red",
+              marginTop: "1rem",
+            }}
+          >
+            {status}
+          </p>
+        )}
       </div>
     </div>
   );
