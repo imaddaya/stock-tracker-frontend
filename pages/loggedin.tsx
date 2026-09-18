@@ -1,132 +1,213 @@
-import { useEffect, useState, useRef } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 
+import { apiRequest } from "../utils/api";
+
+interface StockSuggestion {
+  symbol: string;
+  name: string;
+}
+
 export default function LoggedIn() {
-  const [email, setEmail] = useState("");
-  const [search, setSearch] = useState("");
-  const [suggestions, setSuggestions] = useState<{ symbol: string; name: string }[]>([]);
-  const [offset, setOffset] = useState(0);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const router = useRouter();
 
+  const [email, setEmail] = useState("");
+  const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState<StockSuggestion[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [loadMoreLoading, setLoadMoreLoading] = useState(false);
+  const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+
   const settingsRef = useRef<HTMLDivElement>(null);
+  const searchRequestId = useRef(0);
 
   useEffect(() => {
+    const token = localStorage.getItem("access_token");
     const storedEmail = localStorage.getItem("user_email") || "";
+
+    if (!token) {
+      void router.push("/");
+      return;
+    }
+
     setEmail(storedEmail);
 
-    const handleClickOutside = (e: MouseEvent) => {
-      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        settingsRef.current &&
+        !settingsRef.current.contains(event.target as Node)
+      ) {
         setSettingsOpen(false);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
-  const handleLogout = async () => {
-    try {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user_email");
-      router.push("/");
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_email");
+
+    void router.push("/");
   };
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearch(value);
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSearch(event.target.value);
+    setStatus("");
   };
 
   useEffect(() => {
+    const trimmedSearch = search.trim();
+
+    if (!trimmedSearch) {
+      setSuggestions([]);
+      setOffset(0);
+      setHasMore(false);
+      setSearchLoading(false);
+      return;
+    }
+
+    const currentRequestId = ++searchRequestId.current;
+
     const delayDebounce = setTimeout(async () => {
-      if (search.length < 1) {
-        setSuggestions([]);
-        setOffset(0);
-        return;
-      }
+      setSearchLoading(true);
 
       try {
-        const token = localStorage.getItem("access_token") || "";
-
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL}/stocks?keywords=${encodeURIComponent(
-            search
+        const data = await apiRequest(
+          `/stocks?keywords=${encodeURIComponent(
+            trimmedSearch,
           )}&offset=0&limit=50`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
         );
 
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error("Search API error:", res.status, errorData);
-          setSuggestions([]);
-          setOffset(0);
+        if (currentRequestId !== searchRequestId.current) {
           return;
         }
 
-        const data = await res.json();
-
         if (!Array.isArray(data)) {
-          console.error("Expected array from /stocks but got:", data);
-          setSuggestions([]);
-          setOffset(0);
-          return;
+          throw new Error("Invalid stock search response.");
         }
 
         setSuggestions(data);
-        setOffset(50);
-      } catch (err) {
-        console.error("Search error", err);
+        setOffset(data.length);
+        setHasMore(data.length === 50);
+      } catch (error) {
+        if (currentRequestId !== searchRequestId.current) {
+          return;
+        }
+
+        console.error("Stock search failed:", error);
+
         setSuggestions([]);
         setOffset(0);
-      }
-    }, 750);
+        setHasMore(false);
 
-    return () => clearTimeout(delayDebounce);
+        setStatus(
+          error instanceof Error ? error.message : "Unable to search stocks.",
+        );
+      } finally {
+        if (currentRequestId === searchRequestId.current) {
+          setSearchLoading(false);
+        }
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(delayDebounce);
+    };
   }, [search]);
 
   const loadMoreStocks = async () => {
-    try {
-      const token = localStorage.getItem("access_token") || "";
+    const trimmedSearch = search.trim();
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/stocks?keywords=${encodeURIComponent(
-          search
+    if (!trimmedSearch || loadMoreLoading || !hasMore) {
+      return;
+    }
+
+    setLoadMoreLoading(true);
+    setStatus("");
+
+    try {
+      const data = await apiRequest(
+        `/stocks?keywords=${encodeURIComponent(
+          trimmedSearch,
         )}&offset=${offset}&limit=50`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
       );
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        console.error("Load more API error:", res.status, errorData);
-        return;
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid stock search response.");
       }
 
-      const data = await res.json();
+      setSuggestions((previous) => {
+        const existingSymbols = new Set(previous.map((stock) => stock.symbol));
 
-      if (!Array.isArray(data) || data.length === 0) {
-        return;
-      }
+        const newStocks = data.filter(
+          (stock: StockSuggestion) => !existingSymbols.has(stock.symbol),
+        );
 
-      setSuggestions((prev) => [...prev, ...data]);
-      setOffset((prev) => prev + 50);
-    } catch (err) {
-      console.error("Load more error", err);
+        return [...previous, ...newStocks];
+      });
+
+      setOffset((previous) => previous + data.length);
+      setHasMore(data.length === 50);
+    } catch (error) {
+      console.error("Loading more stocks failed:", error);
+
+      setStatus(
+        error instanceof Error ? error.message : "Unable to load more stocks.",
+      );
+    } finally {
+      setLoadMoreLoading(false);
+    }
+  };
+
+  const handleAddStock = async (symbol: string) => {
+    if (addingSymbol) {
+      return;
+    }
+
+    setAddingSymbol(symbol);
+    setStatus("");
+
+    try {
+      await apiRequest("/portfolio/add", {
+        method: "POST",
+        body: JSON.stringify({
+          stock_symbol: symbol,
+        }),
+      });
+
+      setSuggestions((previous) =>
+        previous.filter((stock) => stock.symbol !== symbol),
+      );
+
+      setStatus(`${symbol} added to your portfolio.`);
+    } catch (error) {
+      console.error("Add to portfolio failed:", error);
+
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Unable to add stock to portfolio.",
+      );
+    } finally {
+      setAddingSymbol(null);
     }
   };
 
   return (
-    <div style={{ fontFamily: "'Poppins', sans-serif" }}>
+    <div
+      style={{
+        fontFamily: "'Poppins', sans-serif",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -137,12 +218,28 @@ export default function LoggedIn() {
           borderBottom: "1px solid #ccc",
         }}
       >
-        <div style={{ fontWeight: "bold", fontSize: "1.5rem" }}>Stokki</div>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div
+          style={{
+            fontWeight: "bold",
+            fontSize: "1.5rem",
+          }}
+        >
+          Stokki
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+          }}
+        >
           <span>{email}</span>
+
           <div style={{ position: "relative" }} ref={settingsRef}>
-            <div
-              onClick={() => setSettingsOpen(!settingsOpen)}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((previous) => !previous)}
               style={{
                 backgroundColor: "#fff",
                 padding: "0.5rem 1rem",
@@ -152,7 +249,8 @@ export default function LoggedIn() {
               }}
             >
               Settings
-            </div>
+            </button>
+
             {settingsOpen && (
               <div
                 style={{
@@ -167,34 +265,34 @@ export default function LoggedIn() {
                 }}
               >
                 {["My Stocks", "Profile", "Logout"].map((item) => (
-                  <div
+                  <button
+                    type="button"
                     key={item}
                     style={{
+                      display: "block",
+                      width: "100%",
                       padding: "0.8rem 1.2rem",
                       color: "black",
                       backgroundColor: "white",
                       cursor: "pointer",
-                      transition: "0.3s",
+                      border: "none",
+                      textAlign: "left",
+                      whiteSpace: "nowrap",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#89CFF0")}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
                     onClick={() => {
-                      switch (item) {
-                        case "My Stocks":
-                          router.push("/mystocks");
-                          break;
-                        case "Profile":
-                          router.push("/profilepage");
-                          break;
-                        case "Logout":
-                          handleLogout();
-                          break;
+                      if (item === "My Stocks") {
+                        void router.push("/mystocks");
+                      } else if (item === "Profile") {
+                        void router.push("/profilepage");
+                      } else {
+                        handleLogout();
                       }
+
                       setSettingsOpen(false);
                     }}
                   >
                     {item}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -202,24 +300,63 @@ export default function LoggedIn() {
         </div>
       </div>
 
-      <div style={{ margin: "2rem auto", width: "400px", position: "relative" }}>
+      <div
+        style={{
+          margin: "2rem auto",
+          width: "400px",
+          maxWidth: "calc(100% - 2rem)",
+          position: "relative",
+        }}
+      >
         <input
           type="text"
           value={search}
           onChange={handleSearchChange}
-          placeholder="type symbol or company name here"
+          placeholder="Type a symbol or company name"
           style={{
             width: "100%",
             padding: "0.8rem 1rem",
             borderRadius: "10px",
             border: "1px solid #ccc",
+            boxSizing: "border-box",
           }}
         />
+
+        {searchLoading && (
+          <p
+            style={{
+              textAlign: "center",
+              color: "#666",
+            }}
+          >
+            Searching...
+          </p>
+        )}
       </div>
 
-      <div style={{ marginTop: "3rem", padding: "0 2rem" }}>
-        {suggestions.length === 0 ? (
-          <h2 style={{ textAlign: "center" }}>Stock boxes will appear here...</h2>
+      {status && (
+        <p
+          style={{
+            textAlign: "center",
+            margin: "1rem",
+          }}
+        >
+          {status}
+        </p>
+      )}
+
+      <div
+        style={{
+          marginTop: "3rem",
+          padding: "0 2rem",
+        }}
+      >
+        {!searchLoading && suggestions.length === 0 ? (
+          <h2 style={{ textAlign: "center" }}>
+            {search.trim()
+              ? "No stocks found."
+              : "Stock boxes will appear here..."}
+          </h2>
         ) : (
           <>
             <div
@@ -261,10 +398,10 @@ export default function LoggedIn() {
                   >
                     <strong>Symbol:</strong> {symbol}
                   </div>
+
                   <div
                     style={{
                       fontSize: "0.9rem",
-                      wordWrap: "break-word",
                       overflowWrap: "break-word",
                       whiteSpace: "normal",
                       maxHeight: "3.6em",
@@ -276,30 +413,9 @@ export default function LoggedIn() {
                   </div>
 
                   <button
-                    onClick={async () => {
-                      try {
-                        const token = localStorage.getItem("access_token") || "";
-
-                        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/portfolio/add`, {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                          },
-                          body: JSON.stringify({ stock_symbol: symbol }),
-                        });
-
-                        if (!res.ok) {
-                          const error = await res.json();
-                          console.error("Failed to add stock:", error.detail || res.statusText);
-                          return;
-                        }
-
-                        setSuggestions((prev) => prev.filter((s) => s.symbol !== symbol));
-                      } catch (err) {
-                        console.error("Add to portfolio error:", err);
-                      }
-                    }}
+                    type="button"
+                    onClick={() => void handleAddStock(symbol)}
+                    disabled={addingSymbol !== null}
                     style={{
                       marginTop: "auto",
                       backgroundColor: "#007bff",
@@ -307,33 +423,42 @@ export default function LoggedIn() {
                       color: "white",
                       padding: "0.5rem",
                       borderRadius: "6px",
-                      cursor: "pointer",
+                      cursor: addingSymbol !== null ? "not-allowed" : "pointer",
                       width: "100%",
                       fontWeight: "bold",
                     }}
                   >
-                    Add to my stocks
+                    {addingSymbol === symbol ? "Adding..." : "Add to my stocks"}
                   </button>
                 </div>
               ))}
             </div>
 
-            <div style={{ textAlign: "center", marginTop: "2rem" }}>
-              <button
-                onClick={loadMoreStocks}
+            {hasMore && (
+              <div
                 style={{
-                  backgroundColor: "#28a745",
-                  border: "none",
-                  color: "white",
-                  padding: "0.5rem 1.2rem",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  fontWeight: "bold",
+                  textAlign: "center",
+                  marginTop: "2rem",
                 }}
               >
-                Show More Stocks
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => void loadMoreStocks()}
+                  disabled={loadMoreLoading}
+                  style={{
+                    backgroundColor: "#28a745",
+                    border: "none",
+                    color: "white",
+                    padding: "0.5rem 1.2rem",
+                    borderRadius: "8px",
+                    cursor: loadMoreLoading ? "not-allowed" : "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {loadMoreLoading ? "Loading..." : "Show More Stocks"}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
