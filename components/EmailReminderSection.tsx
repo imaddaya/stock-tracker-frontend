@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { timezones } from "../utils/timezones";
 
@@ -25,7 +24,8 @@ export default function EmailReminderSection({
 }: EmailReminderSectionProps) {
   const [showTimezoneDropdown, setShowTimezoneDropdown] = useState(false);
 
-  const canSave = emailReminderEnabled && emailReminderTime && selectedTimezone;
+  const canSave =
+    !emailReminderEnabled || Boolean(emailReminderTime && selectedTimezone);
 
   return (
     <div
@@ -38,8 +38,20 @@ export default function EmailReminderSection({
         opacity: emailReminderEnabled ? 1 : 0.6,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-        <label style={{ fontWeight: "bold", color: emailReminderEnabled ? "black" : "#999" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "1rem",
+        }}
+      >
+        <label
+          style={{
+            fontWeight: "bold",
+            color: emailReminderEnabled ? "black" : "#999",
+          }}
+        >
           Daily Email Reminder:
         </label>
 
@@ -86,8 +98,20 @@ export default function EmailReminderSection({
         </span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
           <label
             style={{
               fontSize: "0.9rem",
@@ -97,6 +121,7 @@ export default function EmailReminderSection({
           >
             Time:
           </label>
+
           <input
             type="time"
             value={emailReminderTime}
@@ -104,7 +129,9 @@ export default function EmailReminderSection({
             disabled={!emailReminderEnabled}
             style={{
               padding: "0.5rem",
-              border: emailReminderEnabled ? "1px solid #ccc" : "1px solid #ddd",
+              border: emailReminderEnabled
+                ? "1px solid #ccc"
+                : "1px solid #ddd",
               borderRadius: "4px",
               fontSize: "1rem",
               backgroundColor: emailReminderEnabled ? "white" : "#f5f5f5",
@@ -135,8 +162,11 @@ export default function EmailReminderSection({
             }}
           >
             <span>
-              🌍 Select Region: {timezones.find((tz) => tz.value === selectedTimezone)?.label || selectedTimezone}
+              🌍 Select Region:{" "}
+              {timezones.find((tz) => tz.value === selectedTimezone)?.label ||
+                selectedTimezone}
             </span>
+
             <span>{showTimezoneDropdown ? "▲" : "▼"}</span>
           </button>
 
@@ -167,13 +197,15 @@ export default function EmailReminderSection({
                   style={{
                     padding: "0.75rem",
                     cursor: "pointer",
-                    backgroundColor: selectedTimezone === timezone.value ? "#e3f2fd" : "white",
+                    backgroundColor:
+                      selectedTimezone === timezone.value ? "#e3f2fd" : "white",
                     borderBottom: "1px solid #eee",
                     fontSize: "0.9rem",
                   }}
                   onMouseEnter={(e) => {
                     if (selectedTimezone !== timezone.value) {
-                      (e.target as HTMLElement).style.backgroundColor = "#f5f5f5";
+                      (e.target as HTMLElement).style.backgroundColor =
+                        "#f5f5f5";
                     }
                   }}
                   onMouseLeave={(e) => {
