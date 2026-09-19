@@ -34,28 +34,51 @@ export default function MyStocks() {
   const [portfolioEntries, setPortfolioEntries] = useState<
     Record<string, PortfolioEntry>
   >({});
+  const [portfolioStorageKey, setPortfolioStorageKey] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
+    const userEmail = localStorage.getItem("user_email")?.trim().toLowerCase();
 
-    if (!token) {
+    if (!token || !userEmail) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user_email");
+
       void router.push("/");
       return;
     }
 
-    const savedEntries = localStorage.getItem("portfolioEntries");
+    const scopedStorageKey = `portfolioEntries:${userEmail}`;
+
+    setPortfolioStorageKey(scopedStorageKey);
+
+    /*
+     * The old portfolioEntries key was shared by every account
+     * using this browser.
+     *
+     * Its ownership cannot be determined safely, so remove it
+     * rather than migrating potentially private data into the
+     * currently logged-in account.
+     */
+    localStorage.removeItem("portfolioEntries");
+
+    const savedEntries = localStorage.getItem(scopedStorageKey);
 
     if (savedEntries) {
       try {
         const parsedEntries = JSON.parse(savedEntries);
 
-        if (parsedEntries && typeof parsedEntries === "object") {
+        if (
+          parsedEntries &&
+          typeof parsedEntries === "object" &&
+          !Array.isArray(parsedEntries)
+        ) {
           setPortfolioEntries(parsedEntries);
         }
       } catch (error) {
         console.error("Failed to read saved portfolio entries:", error);
 
-        localStorage.removeItem("portfolioEntries");
+        localStorage.removeItem(scopedStorageKey);
       }
     }
 
@@ -86,6 +109,14 @@ export default function MyStocks() {
     void fetchPortfolio();
   }, [router]);
 
+  const savePortfolioEntries = (entries: Record<string, PortfolioEntry>) => {
+    if (!portfolioStorageKey) {
+      return;
+    }
+
+    localStorage.setItem(portfolioStorageKey, JSON.stringify(entries));
+  };
+
   const handleRemove = async (symbol: string) => {
     if (removingSymbol) {
       return;
@@ -110,10 +141,7 @@ export default function MyStocks() {
 
         delete updatedEntries[symbol];
 
-        localStorage.setItem(
-          "portfolioEntries",
-          JSON.stringify(updatedEntries),
-        );
+        savePortfolioEntries(updatedEntries);
 
         return updatedEntries;
       });
@@ -190,7 +218,7 @@ export default function MyStocks() {
         },
       };
 
-      localStorage.setItem("portfolioEntries", JSON.stringify(updatedEntries));
+      savePortfolioEntries(updatedEntries);
 
       return updatedEntries;
     });
@@ -327,7 +355,13 @@ export default function MyStocks() {
                     marginBottom: "0.5rem",
                   }}
                 >
-                  <h3 style={{ margin: 0 }}>{symbol}</h3>
+                  <h3
+                    style={{
+                      margin: 0,
+                    }}
+                  >
+                    {symbol}
+                  </h3>
 
                   <div
                     style={{
