@@ -6,12 +6,42 @@ if (!backendUrl) {
 
 const BACKEND_URL = backendUrl.replace(/\/$/, "");
 
+const isPublicEndpoint = (endpoint: string) => {
+  return (
+    endpoint.startsWith("/auth/") ||
+    endpoint.startsWith("/user/confirm-delete-account")
+  );
+};
+
+const clearStoredSession = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user_email");
+};
+
+const redirectToLogin = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (window.location.pathname !== "/") {
+    window.location.replace("/");
+  }
+};
+
 export const apiRequest = async (
   endpoint: string,
   options: RequestInit = {},
 ) => {
+  const shouldUseAuthentication = !isPublicEndpoint(endpoint);
+
   const token =
-    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    shouldUseAuthentication && typeof window !== "undefined"
+      ? localStorage.getItem("access_token")
+      : null;
 
   const defaultHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -31,6 +61,13 @@ export const apiRequest = async (
     });
 
     if (!response.ok) {
+      if (response.status === 401 && token) {
+        clearStoredSession();
+        redirectToLogin();
+
+        throw new Error("Your session has expired. Please log in again.");
+      }
+
       const errorData = await response.json().catch(() => null);
 
       const detail = errorData?.detail || `HTTP ${response.status}`;
@@ -82,7 +119,9 @@ export const profileAPI = {
   requestPasswordReset: (email: string) =>
     apiRequest("/auth/forgot-password", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({
+        email,
+      }),
     }),
 
   deleteAccount: () =>
