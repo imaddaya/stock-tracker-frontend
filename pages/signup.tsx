@@ -3,13 +3,20 @@ import Link from "next/link";
 
 import { apiRequest } from "../utils/api";
 
+type StatusKind = "success" | "error";
+
 export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [alphaKey, setAlphaKey] = useState("");
+
   const [status, setStatus] = useState("");
+  const [statusKind, setStatusKind] = useState<StatusKind>("error");
+
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+
   const [isWaiting, setIsWaiting] = useState(false);
 
   const validation = {
@@ -30,29 +37,36 @@ export default function Signup() {
     password === confirmPassword &&
     isPasswordValid;
 
+  const canResend =
+    email.trim() !== "" && password !== "" && !loading && !resendLoading;
+
   const handleSignup = async () => {
-    if (loading || isWaiting) {
+    if (loading || resendLoading || isWaiting) {
       return;
     }
 
     setStatus("");
 
     if (!email.trim()) {
+      setStatusKind("error");
       setStatus("Please enter your email.");
       return;
     }
 
     if (!isPasswordValid) {
+      setStatusKind("error");
       setStatus("Please make sure your password meets all requirements.");
       return;
     }
 
     if (password !== confirmPassword) {
+      setStatusKind("error");
       setStatus("Passwords do not match.");
       return;
     }
 
     if (!alphaKey.trim()) {
+      setStatusKind("error");
       setStatus("Please enter your Alpha Vantage API key.");
       return;
     }
@@ -70,13 +84,16 @@ export default function Signup() {
         }),
       });
 
+      setStatusKind("success");
       setStatus(
         "Account created. Please check your email to verify your account.",
       );
+
       setIsWaiting(true);
     } catch (error) {
       console.error("Signup error:", error);
 
+      setStatusKind("error");
       setStatus(
         error instanceof Error
           ? error.message
@@ -84,6 +101,56 @@ export default function Signup() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!canResend) {
+      return;
+    }
+
+    if (!email.trim()) {
+      setStatusKind("error");
+      setStatus("Please enter your email.");
+      return;
+    }
+
+    if (!password) {
+      setStatusKind("error");
+      setStatus("Please enter your password.");
+      return;
+    }
+
+    setResendLoading(true);
+    setStatus("");
+
+    try {
+      const result = await apiRequest("/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      setStatusKind("success");
+
+      setStatus(
+        result?.message ||
+          "If the account is eligible, a new verification email will be sent.",
+      );
+    } catch (error) {
+      console.error("Resend verification error:", error);
+
+      setStatusKind("error");
+
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Unable to request another verification email.",
+      );
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -109,7 +176,7 @@ export default function Signup() {
           padding: "0.5rem",
           width: "300px",
         }}
-        disabled={loading || isWaiting}
+        disabled={loading || resendLoading || isWaiting}
       />
 
       <br />
@@ -125,7 +192,7 @@ export default function Signup() {
           padding: "0.5rem",
           width: "300px",
         }}
-        disabled={loading || isWaiting}
+        disabled={loading || resendLoading || isWaiting}
       />
 
       <ul
@@ -198,7 +265,7 @@ export default function Signup() {
           padding: "0.5rem",
           width: "300px",
         }}
-        disabled={loading || isWaiting}
+        disabled={loading || resendLoading || isWaiting}
       />
 
       <br />
@@ -232,7 +299,7 @@ export default function Signup() {
           padding: "0.5rem",
           width: "300px",
         }}
-        disabled={loading || isWaiting}
+        disabled={loading || resendLoading || isWaiting}
       />
 
       <p
@@ -249,11 +316,13 @@ export default function Signup() {
       <button
         type="button"
         onClick={handleSignup}
-        disabled={loading || isWaiting || !isFormValid}
+        disabled={loading || resendLoading || isWaiting || !isFormValid}
         style={{
           padding: "0.7rem 2rem",
           cursor:
-            loading || isWaiting || !isFormValid ? "not-allowed" : "pointer",
+            loading || resendLoading || isWaiting || !isFormValid
+              ? "not-allowed"
+              : "pointer",
         }}
       >
         {loading
@@ -263,7 +332,42 @@ export default function Signup() {
             : "Create Account"}
       </button>
 
-      <div style={{ marginTop: "1.5rem" }}>
+      <div
+        style={{
+          marginTop: "1rem",
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleResendVerification}
+          disabled={!canResend}
+          style={{
+            padding: "0.6rem 1.2rem",
+            cursor: canResend ? "pointer" : "not-allowed",
+          }}
+        >
+          {resendLoading ? "Sending..." : "Resend Verification Email"}
+        </button>
+      </div>
+
+      <p
+        style={{
+          fontSize: "0.8rem",
+          color: "gray",
+          maxWidth: "360px",
+          margin: "0.75rem auto 0",
+        }}
+      >
+        If you already created an account but never received the verification
+        email, enter that account&apos;s email and password above and use the
+        resend button.
+      </p>
+
+      <div
+        style={{
+          marginTop: "1.5rem",
+        }}
+      >
         Already have an account?{" "}
         <Link
           href="/"
@@ -280,7 +384,7 @@ export default function Signup() {
         <p
           style={{
             marginTop: "1rem",
-            color: isWaiting ? "green" : "red",
+            color: statusKind === "success" ? "green" : "red",
           }}
         >
           {status}
