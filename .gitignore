@@ -94,3 +94,7 @@ dist
 
 # VS Code test versions
 .vscode-test
+# Playwright test output
+test-results/
+playwright-report/
+blob-report/
