@@ -79,7 +79,7 @@ The application uses a shared API client for communication with the FastAPI back
 
 Before running the frontend, install:
 
-- Node.js
+- Node.js 24 (also used by CI)
 - npm
 - Git
 
@@ -102,7 +102,7 @@ cd stock-tracker-frontend
 Install dependencies:
 
 ```bash
-npm install
+npm ci
 ```
 
 ## 🌐 Environment Configuration
@@ -150,6 +150,8 @@ http://127.0.0.1:3000
 Using `127.0.0.1` consistently is recommended for local development because the backend CORS configuration must match the frontend origin.
 
 ## 🧪 Quality Checks
+
+See [the testing guide](docs/TESTING.md) for browser setup, mocked API boundaries, and real integration checks. GitHub Actions runs lint, TypeScript, the production build, and the Playwright suite on pushes and pull requests.
 
 Run ESLint:
 
