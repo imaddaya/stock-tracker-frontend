@@ -3,6 +3,34 @@ import { useRouter } from "next/router";
 
 import { apiRequest } from "../utils/api";
 
+function getDeletedAccountEmail(token: string): string | null {
+  try {
+    const encodedPayload = token.split(".")[1];
+
+    if (!encodedPayload) {
+      return null;
+    }
+
+    const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedBase64 = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(paddedBase64), (char) =>
+      char.charCodeAt(0),
+    );
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+
+    if (
+      payload?.type !== "account_deletion" ||
+      typeof payload.email !== "string"
+    ) {
+      return null;
+    }
+
+    return payload.email.trim().toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ConfirmAccountDeletion() {
   const router = useRouter();
   const { token } = router.query;
@@ -49,6 +77,14 @@ export default function ConfirmAccountDeletion() {
           method: "POST",
         },
       );
+
+      // The backend has verified this token. Use its account, which may differ
+      // from the browser's current session, only to clear that account's data.
+      const deletedAccountEmail = getDeletedAccountEmail(deletionToken);
+
+      if (deletedAccountEmail) {
+        localStorage.removeItem(`portfolioEntries:${deletedAccountEmail}`);
+      }
 
       localStorage.removeItem("access_token");
       localStorage.removeItem("user_email");
